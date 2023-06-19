@@ -1,4 +1,4 @@
-[tasks.show-origin-token]
+[tasks.show-parsed-ast]
 script = '''
 cd ./proc-marco
 cargo check
