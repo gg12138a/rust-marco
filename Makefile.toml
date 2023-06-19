@@ -1,0 +1,5 @@
+[tasks.show-origin-token]
+script = '''
+cd ./proc-marco
+cargo check
+'''

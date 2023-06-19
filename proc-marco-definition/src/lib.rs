@@ -1,14 +1,12 @@
-fn add(left: usize, right: usize) -> usize {
-    left + right
-}
+use proc_macro::TokenStream;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// function name is <b>the marco name</b>.
+#[proc_macro_attribute]
+pub fn hello_world_proc_marco(attr: TokenStream, item: TokenStream) -> TokenStream {
+    // stdout will captured by cargo.
+    // simply use stderr to print msg.
+    eprintln!("{:#?}", attr);
+    eprintln!("{:#?}", item);
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
+    item
 }
