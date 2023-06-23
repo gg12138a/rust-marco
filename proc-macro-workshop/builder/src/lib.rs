@@ -9,6 +9,42 @@
 //!     current_dir: String,
 //! }
 //! ```
+//!
+//! then code below will be append:
+//!
+//! ```ignore
+//! pub struct CommandBuilder {
+//!     executable: Option<String>,
+//!     args: Option<Vec<String>>,
+//!     env: Option<Vec<String>>,
+//!     current_dir: Option<String>,
+//! }
+//!
+//! impl Command {
+//!     pub fn builder() -> CommandBuilder {
+//!         CommandBuilder {
+//!             executable: None,
+//!             args: None,
+//!             env: None,
+//!             current_dir: None,
+//!         }
+//!     }
+//! }
+//!
+//! impl CommandBuilder {
+//!     pub fn executable(&mut self, executable: String) -> &mut Self {
+//!         self.executable = Some(executable);
+//!         self
+//!     }
+//!
+//!     // ...(other setters)
+//!
+//!     pub fn build(&mut self) -> Result<Command, Box<dyn Error>> {
+//!         // check all fields not none
+//!     }
+//! }
+//! ```
+
 
 use proc_macro::TokenStream;
 use quote::quote;
@@ -31,7 +67,6 @@ fn do_st_expand(st: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let builder_struct_ident = syn::Ident::new(&builder_struct_name_literal, st.span());
     let primitive_struct_ident = &st.ident;
 
-    // 为了展示两种实现方式
     let builder_struct_fields_def = generate_builder_struct_fields_def(st).unwrap();
     let init_clauses = generate_builder_struct_factory_fn_init_clauses(st).unwrap();
     let setters = generate_setters_for_builder_struct(st).unwrap();
