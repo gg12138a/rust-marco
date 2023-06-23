@@ -30,6 +30,9 @@
 // there is such a large variety of type syntax in Rust, so here is the nested
 // data structure representation that your macro will want to identify:
 //
+//
+//  org::example::Foo<T,R,U>
+//
 //     Type::Path(
 //         TypePath {
 //             qself: None,

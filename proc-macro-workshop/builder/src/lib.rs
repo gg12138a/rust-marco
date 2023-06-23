@@ -6,7 +6,7 @@
 //!     executable: String,
 //!     args: Vec<String>,
 //!     env: Vec<String>,
-//!     current_dir: String,
+//!     current_dir: Option<String>,
 //! }
 //! ```
 //!
@@ -45,7 +45,6 @@
 //! }
 //! ```
 
-
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{self, spanned::Spanned, DeriveInput};
@@ -71,7 +70,6 @@ fn do_st_expand(st: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let init_clauses = generate_builder_struct_factory_fn_init_clauses(st).unwrap();
     let setters = generate_setters_for_builder_struct(st).unwrap();
     let build_fn = generate_build_fn_for_builder_struct(st).unwrap();
-
 
     let macro2_token_stream = quote!(
         pub struct #builder_struct_ident {
@@ -115,20 +113,34 @@ fn get_fields(st: &DeriveInput) -> syn::Result<&StructFields> {
 /// # Expand Result Example
 /// ```ignore
 /// // pub struct CommandBuilder {
-///         executable: Option<String>,
+///         executable: Option<String>,     // original type `String`
 ///         args: Option<Vec<String>>,
 ///         env: Option<Vec<String>>,
-///         current_dir: Option<String>,
+///         current_dir: Option<String>,    // original type `Option<String>`, now we will get the right type `Option<String>` instead of type `Option<Option<String>>`
 /// // }
 ///```
 fn generate_builder_struct_fields_def(st: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let fields = get_fields(st).unwrap();
 
     let idents: Vec<_> = fields.iter().map(|f| &f.ident).collect();
-    let tys: Vec<_> = fields.iter().map(|f| &f.ty).collect();
+    let tys: Vec<_> = fields
+        .iter()
+        .map(|f| {
+            // if original field type R eqauls `Option<T>`, the corresponding field type in `XXXBuilder`
+            // will be type `Option<T>` or else type `Option<R>`.
+            if let Some(generic_argument_ty) =
+                identify_option_type_token_stream_in_original_struct_def(&f.ty)
+            {
+                quote!(std::option::Option<#generic_argument_ty>)
+            } else {
+                let original_ty = &f.ty;
+                quote!(std::option::Option<#original_ty>)
+            }
+        })
+        .collect();
 
     Ok(quote!(
-        #(#idents: std::option::Option<#tys>),*
+        #(#idents: #tys),*
     ))
 }
 
@@ -187,6 +199,13 @@ fn generate_setters_for_builder_struct(st: &DeriveInput) -> syn::Result<proc_mac
 
     let mut to_append_tokenstream = proc_macro2::TokenStream::new();
     for (ident, ty) in idents.iter().zip(tys.iter()) {
+        // ty will be type `T` if original type `R` equals `Option<T>` otherwise type `R`.
+        let ty = if let Some(ty) = identify_option_type_token_stream_in_original_struct_def(&ty) {
+            ty
+        } else {
+            ty
+        };
+
         let setter_tokenstream = quote!(
             fn #ident(&mut self, #ident: #ty) -> &mut Self{
                 self.#ident = std::option::Option::Some(#ident);
@@ -214,24 +233,37 @@ fn generate_setters_for_builder_struct(st: &DeriveInput) -> syn::Result<proc_mac
 fn generate_build_fn_for_builder_struct(st: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let fields = get_fields(st).unwrap();
 
+    // check must not be None fields.
     let mut check_all_fields_not_none_code = Vec::new();
     for field in fields {
         let ident = &field.ident;
 
-        check_all_fields_not_none_code.push(quote!(
-            if self.#ident.is_none() {
-                let err = format!("field {} still none, can't build now.", stringify!(#ident));
-                return std::result::Result::Err(err.into());
-            }
-        ))
+        // skip fields with type `Option<T>` in original struct def.
+        if let None = identify_option_type_token_stream_in_original_struct_def(&field.ty) {
+            check_all_fields_not_none_code.push(quote!(
+                if self.#ident.is_none() {
+                    let err = format!("field {} still none, can't build now.", stringify!(#ident));
+                    return std::result::Result::Err(err.into());
+                }
+            ))
+        }
     }
 
+    // field will be None if not set when fn `build` called.
     let mut to_fill_result_variable_clauses = Vec::new();
     for field in fields {
         let ident = &field.ident;
-        to_fill_result_variable_clauses.push(quote!(
-            #ident: self.#ident.clone().unwrap()
-        ));
+
+        if let None = identify_option_type_token_stream_in_original_struct_def(&field.ty) {
+            // original type is not `Option<T>`, so we need unwrap `Option<T>` to `T`.
+            to_fill_result_variable_clauses.push(quote!(
+                #ident: self.#ident.clone().unwrap()
+            ));
+        } else {
+            to_fill_result_variable_clauses.push(quote!(
+                #ident: self.#ident.clone()
+            ));
+        }
     }
 
     let original_struct_ident = &st.ident;
@@ -246,4 +278,29 @@ fn generate_build_fn_for_builder_struct(st: &DeriveInput) -> syn::Result<proc_ma
     );
 
     Ok(build_fn)
+}
+
+/// return type `T` in type `Option<T>`.
+fn identify_option_type_token_stream_in_original_struct_def(ty: &syn::Type) -> Option<&syn::Type> {
+    if let syn::Type::Path(syn::TypePath {
+        path: syn::Path { segments, .. },
+        ..
+    }) = ty
+    {
+        if let Some(seg) = segments.last() {
+            if seg.ident.to_string() == "Option" {
+                if let syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments {
+                    args,
+                    ..
+                }) = &seg.arguments
+                {
+                    if let Some(syn::GenericArgument::Type(ref ty)) = args.first() {
+                        return Some(ty);
+                    }
+                }
+            }
+        }
+    }
+
+    None
 }
