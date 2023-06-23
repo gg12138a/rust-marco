@@ -1,3 +1,15 @@
+//! Example use for derive macro `Builder`:
+//!
+//! ```
+//! #[derive(Builder)]
+//! pub struct Command {
+//!     executable: String,
+//!     args: Vec<String>,
+//!     env: Vec<String>,
+//!     current_dir: String,
+//! }
+//! ```
+
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::{self, spanned::Spanned, DeriveInput};
@@ -16,8 +28,7 @@ fn do_st_expand(st: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let primitive_struct_name_literal = st.ident.to_string();
     let builder_struct_name_literal = format!("{}Builder", primitive_struct_name_literal);
 
-    // 采用Client定义的Strcut的Span描述
-    let builder_strcut_ident = syn::Ident::new(&builder_struct_name_literal, st.span());
+    let builder_struct_ident = syn::Ident::new(&builder_struct_name_literal, st.span());
     let primitive_struct_ident = &st.ident;
 
     // 为了展示两种实现方式
@@ -25,13 +36,13 @@ fn do_st_expand(st: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let init_clauses = generate_builder_struct_factory_fn_init_clauses(st).unwrap();
 
     let macro2_token_stream = quote!(
-        pub struct #builder_strcut_ident {
+        pub struct #builder_struct_ident {
             #builder_struct_fields_def
         }
 
         impl #primitive_struct_ident {
-            pub fn builder() -> #builder_strcut_ident {
-                #builder_strcut_ident {
+            pub fn builder() -> #builder_struct_ident {
+                #builder_struct_ident {
                     #(#init_clauses),*
                 }
             }
@@ -55,6 +66,17 @@ fn get_fields(st: &DeriveInput) -> syn::Result<&StructFields> {
     }
 }
 
+/// expand syntax tree to get XXXBuilder struct definition.
+///
+/// # Expand Result Example
+/// ```
+/// pub struct CommandBuilder {
+///     executable: Option<String>,
+///     args: Option<Vec<String>>,
+///     env: Option<Vec<String>>,
+///     current_dir: Option<String>,
+/// }
+///```
 fn generate_builder_struct_fields_def(st: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let fields = get_fields(st).unwrap();
 
@@ -66,6 +88,22 @@ fn generate_builder_struct_fields_def(st: &DeriveInput) -> syn::Result<proc_macr
     ))
 }
 
+/// expand syntax tree to get impl block for `XXX` struct.
+///
+/// # Expand Result Example
+///
+/// ```
+/// impl Command {
+///     pub fn builder() -> CommandBuilder {
+///         CommandBuilder {
+///             executable: None,
+///             args: None,
+///             env: None,
+///             current_dir: None,
+///         }
+///     }
+/// }
+/// ```
 fn generate_builder_struct_factory_fn_init_clauses(
     st: &DeriveInput,
 ) -> syn::Result<Vec<proc_macro2::TokenStream>> {
