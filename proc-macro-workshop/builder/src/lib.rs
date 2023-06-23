@@ -35,6 +35,8 @@ fn do_st_expand(st: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let builder_struct_fields_def = generate_builder_struct_fields_def(st).unwrap();
     let init_clauses = generate_builder_struct_factory_fn_init_clauses(st).unwrap();
     let setters = generate_setters_for_builder_struct(st).unwrap();
+    let build_fn = generate_build_fn_for_builder_struct(st).unwrap();
+
 
     let macro2_token_stream = quote!(
         pub struct #builder_struct_ident {
@@ -51,6 +53,8 @@ fn do_st_expand(st: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
 
         impl #builder_struct_ident {
             #setters
+
+            #build_fn
         }
     );
 
@@ -75,12 +79,12 @@ fn get_fields(st: &DeriveInput) -> syn::Result<&StructFields> {
 ///
 /// # Expand Result Example
 /// ```ignore
-/// pub struct CommandBuilder {
-///     executable: Option<String>,
-///     args: Option<Vec<String>>,
-///     env: Option<Vec<String>>,
-///     current_dir: Option<String>,
-/// }
+/// // pub struct CommandBuilder {
+///         executable: Option<String>,
+///         args: Option<Vec<String>>,
+///         env: Option<Vec<String>>,
+///         current_dir: Option<String>,
+/// // }
 ///```
 fn generate_builder_struct_fields_def(st: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let fields = get_fields(st).unwrap();
@@ -98,16 +102,16 @@ fn generate_builder_struct_fields_def(st: &DeriveInput) -> syn::Result<proc_macr
 /// # Expand Result Example
 ///
 /// ```ignore
-/// impl Command {
-///     pub fn builder() -> CommandBuilder {
-///         CommandBuilder {
-///             executable: None,
-///             args: None,
-///             env: None,
-///             current_dir: None,
-///         }
-///     }
-/// }
+/// // impl Command {
+/// //     pub fn builder() -> CommandBuilder {
+/// //          CommandBuilder {
+///                 executable: None,
+///                 args: None,
+///                 env: None,
+///                 current_dir: None,
+/// //         }
+/// //     }
+/// // }
 /// ```
 fn generate_builder_struct_factory_fn_init_clauses(
     st: &DeriveInput,
@@ -159,4 +163,52 @@ fn generate_setters_for_builder_struct(st: &DeriveInput) -> syn::Result<proc_mac
     }
 
     Ok(to_append_tokenstream)
+}
+
+/// generate build fn for `XXXBuilder` struct.
+///
+///  # Expand Result Example
+///
+/// ```ignore
+/// impl CommandBuilder {
+///     pub fn build(&mut self) -> Result<Command, Box<dyn Error>> {
+///         ...
+///     }
+/// }
+/// ```
+fn generate_build_fn_for_builder_struct(st: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
+    let fields = get_fields(st).unwrap();
+
+    let mut check_all_fields_not_none_code = Vec::new();
+    for field in fields {
+        let ident = &field.ident;
+
+        check_all_fields_not_none_code.push(quote!(
+            if self.#ident.is_none() {
+                let err = format!("field {} still none, can't build now.", stringify!(#ident));
+                return std::result::Result::Err(err.into());
+            }
+        ))
+    }
+
+    let mut to_fill_result_variable_clauses = Vec::new();
+    for field in fields {
+        let ident = &field.ident;
+        to_fill_result_variable_clauses.push(quote!(
+            #ident: self.#ident.clone().unwrap()
+        ));
+    }
+
+    let original_struct_ident = &st.ident;
+    let build_fn = quote!(
+        pub fn build(&self) -> std::result::Result<#original_struct_ident, std::boxed::Box<dyn std::error::Error>> {
+            #(#check_all_fields_not_none_code)*
+
+            std::result::Result::Ok(#original_struct_ident {
+                #(#to_fill_result_variable_clauses),*
+            })
+        }
+    );
+
+    Ok(build_fn)
 }
