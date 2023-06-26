@@ -120,10 +120,10 @@ fn do_st_expand(st: &DeriveInput) -> syn::Result<proc_macro2::TokenStream> {
     let original_struct_ident = &st.ident;
     let builder_struct_ident = Ident::new(&builder_struct_name_literal, st.span());
 
-    let fields = collect_fields_metadata_from_syntax_tree(st).unwrap();
+    let fields = collect_fields_metadata_from_syntax_tree(st)?;
     let builder_struct_fields_def = generate_builder_struct_fields_def(&fields);
     let init_clauses = generate_builder_struct_factory_fn_init_clauses(&fields);
-    let setters = generate_setters_for_builder_struct(&fields).unwrap();
+    let setters = generate_setters_for_builder_struct(&fields)?;
     let build_fn = generate_build_fn_for_builder_struct(original_struct_ident, &fields);
 
     let macro2_token_stream = quote!(
@@ -155,16 +155,15 @@ fn collect_fields_metadata_from_syntax_tree(
 ) -> syn::Result<Vec<StructFieldsWithMetadata>> {
     let fields_without_medata = get_fields_from_syntax_tree(st).unwrap();
 
-    Ok(fields_without_medata
-        .iter()
-        .map(|field| {
+    let mut v = vec![];
+    for field in fields_without_medata {
             let ident = &field.ident.as_ref().unwrap();
             let original_ty = &field.ty;
             let inner_ty_in_option = extract_inner_type_of_option(&field.ty);
 
             let inner_ty_meta_in_vec_type =
                 if let Some(ty_in_vec_type) = extract_inner_type_of_vec(&field.ty) {
-                    let attr_val = value_of_the_key_each_in_attribute_builder(&field).unwrap();
+                    let attr_val = value_of_the_key_each_in_attribute_builder(&field)?;
                     Some(VecTypeMeta {
                         inner_argument_ty: ty_in_vec_type,
                         val_of_the_key_each: attr_val,
@@ -173,14 +172,15 @@ fn collect_fields_metadata_from_syntax_tree(
                     None
                 };
 
-            StructFieldsWithMetadata {
+            v.push(StructFieldsWithMetadata {
                 ident,
                 original_ty,
                 inner_ty_in_option,
                 inner_ty_meta_in_vec_type,
-            }
-        })
-        .collect())
+            });
+        }
+    
+    Ok(v)
 }
 
 /// expand syntax tree to get XXXBuilder struct definition.
