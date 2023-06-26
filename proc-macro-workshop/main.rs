@@ -6,29 +6,18 @@
 // To run the code:
 //     $ cargo run
 
-
-use derive_builder::Builder;
-
-#[derive(Builder)]
-pub struct Command {
-    executable: String,
-    #[builder(each = "arg")]
-    args: Vec<String>,
-    #[builder(each = "env")]
-    env: Vec<String>,
-    current_dir: Option<String>,
+pub struct Field {
+    name: &'static str,
+    bitmask: u8,
 }
 
-fn main() {
-    let command = Command::builder()
-        .executable("cargo".to_owned())
-        .arg("build".to_owned())
-        .arg("--release".to_owned())
-        .build()
-        .unwrap();
-
-    assert_eq!(command.executable, "cargo");
-    assert_eq!(command.args, vec!["build", "--release"]);
-    assert_eq!(command.env, Vec::<String>::new());
-    assert_eq!(command.current_dir, None);
+impl std::fmt::Debug for Field {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Field")
+            .field("name", &self.name)
+            .field("bitmask", &self.bitmask)
+            .finish()
+    }
 }
+
+fn main() {}
